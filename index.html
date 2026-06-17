@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Green City Tycoon</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: sans-serif; background-color: #f1f8e9; }
+    .tile-btn { transition: transform 0.1s, box-shadow 0.1s; }
+    .tile-btn:hover { transform: scale(1.06); z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .tile-btn:active { transform: scale(0.94); }
+    @keyframes pop { 0% { transform: scale(1.3); } 100% { transform: scale(1); } }
+    .score-pop { animation: pop 0.25s ease-out; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useMemo, useEffect, useRef } = React;
+
+    const TILES = {
+      EMPTY:    { id: 'EMPTY',    emoji: '',   label: '빈 땅',      bg: '#dcedc8', border: '#aed581' },
+      ROAD:     { id: 'ROAD',     emoji: '🛣️', label: '자동차 도로', bg: '#cfd8dc', border: '#90a4ae' },
+      BIKE:     { id: 'BIKE',     emoji: '🚲', label: '자전거 도로', bg: '#aed581', border: '#7cb342' },
+      SHOP:     { id: 'SHOP',     emoji: '🏪', label: '동네 상점',   bg: '#b3e5fc', border: '#4fc3f7' },
+      DELIVERY: { id: 'DELIVERY', emoji: '📦', label: '하역 구역',   bg: '#fff9c4', border: '#fff176' },
+      TREE:     { id: 'TREE',     emoji: '🌳', label: '가로수',      bg: '#81c784', border: '#4caf50' },
+    };
+
+    const GRID_SIZE = 6;
+
+    function getAdjacent(index) {
+      const row = Math.floor(index / GRID_SIZE);
+      const col = index % GRID_SIZE;
+      const result = [];
+      for (let r = Math.max(0, row - 1); r <= Math.min(GRID_SIZE - 1, row + 1); r++) {
+        for (let c = Math.max(0, col - 1); c <= Math.min(GRID_SIZE - 1, col + 1); c++) {
+          if (r !== row || c !== col) result.push(r * GRID_SIZE + c);
+        }
+      }
+      return result;
+    }
+
+    function calcScore(grid) {
+      let score = 0;
+      let shopCount = 0, shopMissing = 0, deliveryMissing = 0;
+      const hasRoad = grid.includes('ROAD');
+
+      grid.forEach((tile, i) => {
+        const adj = getAdjacent(i);
+        if (tile === 'BIKE') score += 5;
+        if (tile === 'TREE') score += 3;
+        if (tile === 'SHOP') {
+          shopCount++;
+          if (adj.some(j => grid[j] === 'DELIVERY')) { score += 20; }
+          else { score -= 10; shopMissing++; }
+        }
+        if (tile === 'DELIVERY') {
+          if (!adj.some(j => grid[j] === 'ROAD')) { score -= 5; deliveryMissing++; }
+        }
+      });
+
+      return {
+        score,
+        allShopsOk: shopCount > 0 && shopMissing === 0,
+        shopWarning: shopMissing > 0,
+        roadWarning: grid.includes('DELIVERY') && !hasRoad,
+      };
+    }
+
+    function App() {
+      const [grid, setGrid] = useState(Array(GRID_SIZE * GRID_SIZE).fill('EMPTY'));
+      const [selected, setSelected] = useState('ROAD');
+      const scoreRef = useRef(null);
+
+      const { score, allShopsOk, shopWarning, roadWarning } = useMemo(() => calcScore(grid), [grid]);
+
+      useEffect(() => {
+        if (scoreRef.current) {
+          scoreRef.current.classList.remove('score-pop');
+          void scoreRef.current.offsetWidth;
+          scoreRef.current.classList.add('score-pop');
+        }
+      }, [score]);
+
+      const clickCell = (i) => {
+        setGrid(prev => { const g = [...prev]; g[i] = selected; return g; });
+      };
+
+      const reset = () => setGrid(Array(GRID_SIZE * GRID_SIZE).fill('EMPTY'));
+
+      return (
+        <div style={{ minHeight: '100vh', padding: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ width: '100%', maxWidth: '900px' }}>
+
+            {/* Header */}
+            <div style={{ marginBottom: '28px' }}>
+              <h1 style={{ fontSize: '2rem', fontWeight: 900, color: '#2e7d32', margin: 0 }}>🌿 Green City Tycoon</h1>
+              <p style={{ color: '#558b2f', marginTop: '6px', fontSize: '1rem' }}>지속 가능한 동네를 계획하고 높은 점수를 달성하세요.</p>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', alignItems: 'flex-start' }}>
+
+              {/* Game Board */}
+              <div style={{ flex: '1 1 300px', maxWidth: '460px' }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
+                  gap: '6px',
+                  padding: '12px',
+                  background: '#c8e6c9',
+                  borderRadius: '20px',
+                  border: '4px solid #a5d6a7',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                  aspectRatio: '1/1',
+                }}>
+                  {grid.map((tileId, i) => {
+                    const t = TILES[tileId];
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => clickCell(i)}
+                        className="tile-btn"
+                        style={{
+                          background: t.bg,
+                          border: `3px solid ${t.border}`,
+                          borderRadius: '10px',
+                          fontSize: '1.4rem',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '100%',
+                          aspectRatio: '1/1',
+                          padding: 0,
+                        }}
+                        title={t.label}
+                      >
+                        {t.emoji}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Control Panel */}
+              <div style={{ flex: '1 1 260px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                {/* Score */}
+                <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', border: '1px solid #e8f5e9' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#2e7d32' }}>도시 점수</h2>
+                    <span ref={scoreRef} style={{ fontSize: '2.4rem', fontWeight: 900, color: score >= 0 ? '#2e7d32' : '#c62828' }}>
+                      {score}점
+                    </span>
+                  </div>
+
+                  {/* Feedback */}
+                  <div style={{ minHeight: '50px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {allShopsOk && (
+                      <div style={{ background: '#e8f5e9', border: '1px solid #a5d6a7', borderRadius: '8px', padding: '10px', fontSize: '0.82rem', color: '#1b5e20' }}>
+                        👍 훌륭합니다! 모든 상점이 배송 구역과 가까워 주민들이 걸어서 장을 볼 수 있습니다.
+                      </div>
+                    )}
+                    {shopWarning && (
+                      <div style={{ background: '#fff3e0', border: '1px solid #ffcc80', borderRadius: '8px', padding: '10px', fontSize: '0.82rem', color: '#bf360c' }}>
+                        ⚠️ 경고: 배송 구역이 없는 상점이 있습니다. 물류가 비효율적입니다! (-10점)
+                      </div>
+                    )}
+                    {roadWarning && (
+                      <div style={{ background: '#fff3e0', border: '1px solid #ffcc80', borderRadius: '8px', padding: '10px', fontSize: '0.82rem', color: '#bf360c' }}>
+                        ⚠️ 경고: 배송 트럭이 들어올 자동차 도로가 없습니다!
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Tile Selector */}
+                <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', border: '1px solid #e8f5e9' }}>
+                  <h3 style={{ margin: '0 0 12px 0', fontSize: '0.8rem', fontWeight: 700, color: '#777', textTransform: 'uppercase', letterSpacing: '0.08em' }}>타일 선택</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {Object.values(TILES).map(t => {
+                      const isSel = selected === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => setSelected(t.id)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: '10px 12px', borderRadius: '10px', cursor: 'pointer',
+                            border: isSel ? '2px solid #43a047' : '2px solid #e0e0e0',
+                            background: isSel ? '#f1f8e9' : 'white',
+                            boxShadow: isSel ? '0 0 0 3px rgba(67,160,71,0.15)' : 'none',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <span style={{ fontSize: '1.4rem', width: '32px', textAlign: 'center',
+                            background: t.bg, borderRadius: '6px', padding: '2px' }}>
+                            {t.emoji || '⬜'}
+                          </span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#333' }}>{t.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Rules */}
+                <div style={{ background: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 2px 12px rgba(0,0,0,0.08)', border: '1px solid #e8f5e9' }}>
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '0.85rem', fontWeight: 700, color: '#2e7d32' }}>점수 규칙</h3>
+                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#555', lineHeight: 1.8 }}>
+                    <li>🚲 자전거 도로 배치: <strong>+5점</strong></li>
+                    <li>🌳 가로수 배치: <strong>+3점</strong></li>
+                    <li>🏪 상점 + 인접 📦 배송 구역: <strong>+20점</strong></li>
+                    <li>🏪 상점 옆 배송 구역 없음: <strong>-10점</strong></li>
+                    <li>📦 배송 구역 + 인접 🛣️ 도로 없음: <strong>-5점</strong></li>
+                  </ul>
+                </div>
+
+                {/* Reset */}
+                <button
+                  onClick={reset}
+                  style={{
+                    width: '100%', padding: '14px', borderRadius: '12px',
+                    background: '#ffebee', border: '2px solid #ef9a9a',
+                    color: '#c62828', fontWeight: 700, fontSize: '1rem',
+                    cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                  onMouseOver={e => e.currentTarget.style.background = '#ffcdd2'}
+                  onMouseOut={e => e.currentTarget.style.background = '#ffebee'}
+                >
+                  도시 초기화
+                </button>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
